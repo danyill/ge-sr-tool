@@ -30,7 +30,7 @@ __author__ = "Daniel Mulholland"
 __copyright__ = "Copyright 2015, Daniel Mulholland"
 __credits__ = ['Stuart Sim for input information', "Kenneth Reitz https://github.com/kennethreitz/tablib"]
 __license__ = "GPL"
-__version__ = '0.05'
+__version__ = '0.06'
 __maintainer__ = "Daniel Mulholland"
 __hosted__ = "https://github.com/danyill/ge-sr-tool"
 __email__ = "dan.mulholland@gmail.com"
@@ -83,22 +83,22 @@ def main(arg=None):
     parser.add_argument('-l', '--legacy', action="store_true",
                        help='Old relay types firmware version 4.??')     
                        
-    parser.add_argument('path', metavar='PATH|FILE', nargs=1, 
+    parser.add_argument('-p', '--path', metavar='PATH|FILE', nargs='+', 
                        help='Go recursively go through path PATH. Redundant if FILE'\
                        ' with extension .'+SR760_EXTENSION+' is used. When recursively' \
                        'called, only searches for files with:' + SR760_EXTENSION \
                        + '. Globbing is allowed with the * and ? characters.'\
                        )
 
-    parser.add_argument('-s', '--screen', action="store_true",
-                       help='Show output to screen')
+    parser.add_argument('-c', '--console', action="store_true",
+                       help='Show output to screen/console')
 
     # Not implemented yet
     #parser.add_argument('-d', '--design', action="store_true",
     #                   help='Attempt to determine Transpower standard design version and' \
     #                   ' include this information in output')
                        
-    parser.add_argument('settings', metavar='C~S', type=str, nargs='+',
+    parser.add_argument('-s', '--settings', metavar='C~S', type=str, nargs='+',
                        help='Settings in the form of C~S where C is the category' \
                        ' and S is the setting name. '
                        ' C and S are specified differently depending on whether the ' \
@@ -125,10 +125,10 @@ def main(arg=None):
         args = parser.parse_args(arg.split())
     
     # read in list of files
-    files_to_do = return_file_paths(args.path, SR760_EXTENSION)
-    
+    files_to_do = return_file_paths([' '.join(args.path)], SR760_EXTENSION)
     # sort out the reference data for addresses to parameter matching
     lookup = {}
+    
     with open(INPUT_DATA_FILE, mode='r') as csvfile:
         ref_d = csv.DictReader(csvfile)        
         for row in ref_d:
@@ -142,9 +142,9 @@ def main(arg=None):
     if files_to_do != []:
         process_760_files(files_to_do, args, lookup)
     else:
-        print('Found nothing to do for path: ' + args.path[0])
+        print('Found nothing to do for path: ' + ' '.join(args.path))
         sys.exit()
-        os.system("Pause")
+        raw_input("Press any key to exit...")
     
 def return_file_paths(args_path, file_extension):
     paths_to_work_on = []
@@ -161,7 +161,7 @@ def return_file_paths(args_path, file_extension):
         for p_or_f in paths_to_work_on:
             if os.path.isfile(p_or_f) == True:
                 # add file to the list
-                print os.path.normpath(p_or_f)
+                # print os.path.normpath(p_or_f)
                 files_to_do.append(os.path.normpath(p_or_f))
             elif os.path.isdir(p_or_f) == True:
                 # walk about see what we can find
@@ -181,17 +181,20 @@ def walkabout(p_or_f, file_extension):
     
 def process_760_files(files_to_do, args, reference_data):
     parameter_info = []
-        
+
+    settings = (' '.join(args.settings)).split("\"")
+    settings = [x for x in settings if x != ' ' and x!= '']
+
     for filename in files_to_do:      
         filesize = os.path.getsize(filename)
         extracted_data = None
         
         if args.legacy == True:
             if filesize < LEGACY_NEW_FILESIZE:
-                extracted_data = extract_parameters_legacy(filename, args.settings, reference_data)
+                extracted_data = extract_parameters_legacy(filename, settings, reference_data)
         elif args.new == True:
             if filesize >= LEGACY_NEW_FILESIZE:
-                extracted_data = extract_parameters_new(filename, args.settings, reference_data)
+                extracted_data = extract_parameters_new(filename, settings, reference_data)
         else:
             print 'You must specify legacy or new. Refer the help'
             sys.exit()
@@ -222,7 +225,7 @@ def process_760_files(files_to_do, args, reference_data):
         with open(name + '.xlsx','wb') as output:
             output.write(data.xlsx)
 
-    if args.screen == True:
+    if args.console == True:
         display_info(parameter_info)
 
 def extract_parameters_legacy(filename, s_parameters, reference_data):
@@ -232,7 +235,7 @@ def extract_parameters_legacy(filename, s_parameters, reference_data):
         data = f.read()
 
     # get input arguments in a sane format
-    s_parameters = re.findall(INPUT_SPLIT_EXPRESSION,' '.join(s_parameters))
+    #s_parameters = re.findall(INPUT_SPLIT_EXPRESSION,' '.join(s_parameters))
     # ^0x'17AA=([\w :+/\\()!,.\-_\\*]*)
     # [SETPOINT GROUP 1](.|\n)*^0x17AA=([\w :+/\\()!,.\-_\\*]*)
     result = None
@@ -279,7 +282,7 @@ def extract_parameters_new(filename, s_parameters, reference_data):
         data = f.read()
 
     # get input arguments in a sane format
-    s_parameters = re.findall(INPUT_SPLIT_EXPRESSION,' '.join(s_parameters))
+    #s_parameters = re.findall(INPUT_SPLIT_EXPRESSION,' '.join(s_parameters))
 
     result = None
     for sp in s_parameters:
@@ -332,8 +335,8 @@ def display_info(parameter_info):
         print display_line
    
 if __name__ == '__main__':   
-    
-    if len(sys.argv) == 1 :
+  
+    if len(sys.argv) == 1:
         
         """
         To select the parameters choose from input_information_sr760.csv
@@ -343,32 +346,19 @@ if __name__ == '__main__':
         # Uncomment this for help
         #main('--help')
         
-        # Legacy application
-        main(r'-o xlsx --legacy -s in \
-        "Device Information~Version" \
-        "Setpoint Group 1~Underfrequency 2 Pickup" \
-        "Setpoint Group 1~Underfrequency 2 Pickup" \
-        "Setpoint Group 2~Underfrequency 2 Pickup" \
-        "Setpoint Group 2~Underfrequency 2 Pickup" \
-        "Setpoint Group 3~Underfrequency 2 Pickup" \
-        "Setpoint Group 3~Underfrequency 2 Pickup" \
-        "Setpoint Group 4~Underfrequency 2 Pickup" \
-        "Setpoint Group 4~Underfrequency 2 Pickup" \
-        ') 
-
-        # Also legacy application
-        main(r'-o xlsx --legacy -s -o xlsx "W:\Education\Current\Stationware_Dump\20150430_Stationware_Settings_Applied" --new \
-        "Device Information~Version" \
-        "Setpoint Group 1~Underfrequency 1 Function" \
-        "Setpoint Group 1~Underfrequency 1 Relays" \
-        "Setpoint Group 1~Underfrequency 1 Pickup" \
-        "Setpoint Group 1~Underfrequency 1 Pickup" \
-        "Setpoint Group 1~Underfrequency 1 Delay" \
-        "Setpoint Group 1~Underfrequency 1 Minimum Operating Voltage" \
-        "Setpoint Group 1~Underfrequency 1 Minimum Operating Current" \
-        "Setpoint Group 1~Underfrequency 2 Function" \
-        "Setpoint Group 1~Underfrequency 2 Relays" \
-        "Setpoint Group 1~Underfrequency 2 Pickup"')
+        # Legacy Application
+        main(r'-o xlsx --legacy --console -o xlsx --path "in"' \
+        " --settings " \
+        "\"Device Information~Version\" " \
+        "\"Setpoint Group 1~Underfrequency 1 Function\" " \
+        "\"Setpoint Group 1~Underfrequency 1 Relays\" " \
+        "\"Setpoint Group 1~Underfrequency 1 Pickup\" " \
+        "\"Setpoint Group 1~Underfrequency 1 Delay\" " \
+        "\"Setpoint Group 1~Underfrequency 1 Minimum Operating Voltage\" " \
+        "\"Setpoint Group 1~Underfrequency 1 Minimum Operating Current\" " \
+        "\"Setpoint Group 1~Underfrequency 2 Function\" " \
+        "\"Setpoint Group 1~Underfrequency 2 Relays\" " \
+        "\"Setpoint Group 1~Underfrequency 2 Pickup\"")
         
         """
         New data format and name of settings has changed but is still human readable
@@ -397,30 +387,30 @@ if __name__ == '__main__':
         # main(r'-o xlsx in --new \
         
         # Newer relay application
-        main(r'-o xlsx -s "W:\Education\Current\Stationware_Dump\20150430_Stationware_Settings_Applied" --new \
-                "Setpoint Group 1~Underfrequency 1 Function" \
-                "Setpoint Group 1~Underfrequency 1: Relay 3" \
-                "Setpoint Group 1~Underfrequency 1: Relay 4" \
-                "Setpoint Group 1~Underfrequency 1: Relay 5" \
-                "Setpoint Group 1~Underfrequency 1: Relay 6" \
-                "Setpoint Group 1~Underfrequency 1: Relay 7" \
-                "Setpoint Group 1~Underfrequency 1 Pickup(Setpoints)" \
-                "Setpoint Group 1~Underfrequency 1 Delay" \
-                "Setpoint Group 1~Underfrequency 1 Minimum Operating Voltage" \
-                "Setpoint Group 1~Underfrequency 1 Minimum Operating Current" \
-                "Setpoint Group 1~Underfrequency 2 Function" \
-                "Setpoint Group 1~Underfrequency 2: Relay 3" \
-                "Setpoint Group 1~Underfrequency 2: Relay 4" \
-                "Setpoint Group 1~Underfrequency 2: Relay 5" \
-                "Setpoint Group 1~Underfrequency 2: Relay 6" \
-                "Setpoint Group 1~Underfrequency 2: Relay 7" \
-                "Setpoint Group 1~Underfrequency 2 Pickup(Setpoints)" \
-                "Setpoint Group 1~Underfrequency 2 Delay" \
-                "Setpoint Group 1~Underfrequency 2 Minimum Opeating Voltage" \
-                "Setpoint Group 1~Underfrequency 2 Minimum Operating Current" \
-                ')
+        main(r'-o xlsx --console --path "in" --new' \
+                " --settings " \
+                "\"Setpoint Group 1~Underfrequency 1 Function\" " \
+                "\"Setpoint Group 1~Underfrequency 1: Relay 3\" " \
+                "\"Setpoint Group 1~Underfrequency 1: Relay 4\" " \
+                "\"Setpoint Group 1~Underfrequency 1: Relay 5\" " \
+                "\"Setpoint Group 1~Underfrequency 1: Relay 6\" " \
+                "\"Setpoint Group 1~Underfrequency 1: Relay 7\" " \
+                "\"Setpoint Group 1~Underfrequency 1 Pickup(Setpoints)\" " \
+                "\"Setpoint Group 1~Underfrequency 1 Delay\" " \
+                "\"Setpoint Group 1~Underfrequency 1 Minimum Operating Voltage\" " \
+                "\"Setpoint Group 1~Underfrequency 1 Minimum Operating Current\" " \
+                "\"Setpoint Group 1~Underfrequency 2 Function\" " \
+                "\"Setpoint Group 1~Underfrequency 2: Relay 3\" " \
+                "\"Setpoint Group 1~Underfrequency 2: Relay 4\" " \
+                "\"Setpoint Group 1~Underfrequency 2: Relay 5\" " \
+                "\"Setpoint Group 1~Underfrequency 2: Relay 6\" " \
+                "\"Setpoint Group 1~Underfrequency 2: Relay 7\" " \
+                "\"Setpoint Group 1~Underfrequency 2 Pickup(Setpoints)\" " \
+                "\"Setpoint Group 1~Underfrequency 2 Delay\" " \
+                "\"Setpoint Group 1~Underfrequency 2 Minimum Opeating Voltage\" " \
+                "\"Setpoint Group 1~Underfrequency 2 Minimum Operating Current\" ")
         
     else:
         main()
-    os.system("Pause")
+    raw_input("Press any key to exit...")
         
